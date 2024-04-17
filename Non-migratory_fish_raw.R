@@ -20,6 +20,7 @@ library(lwgeom) # for st_split
 library(tidygraph)
 library(sfnetworks)
 library(igraph)
+library(scales)
 
 
 # read in fish data
@@ -238,7 +239,6 @@ all_coords <- all_nodes %>%
 set.seed(487)
 des <- st_sample(edges, size = 1, type = "random") %>% st_cast("POINT")
 
-
 # find nearest point on line point will be nearest edge(need to snap to line)
 feature_o <- edges[st_nearest_feature(obs, edges), ]
 feature_d <- edges[st_nearest_feature(des, edges), ]
@@ -251,14 +251,17 @@ origin.points <- st_sample(feature_o, size = ten.m.lengths, type = "regular") %>
 destination.points <- st_sample(feature_d, size = ten.m.lengths, type = "regular") %>%
   st_as_sf() %>% st_cast("POINT")
 
-# nearest point on edge (feature)
+# nearest point spatial feature
 nearest_to_origin <- st_nearest_feature(obs, origin.points)
 nearest_to_destination <- st_nearest_feature(des, destination.points)
 
-  
-# random destination destination will be 
+# nearest edge on network
+nearest_edge_origin <- st_nearest_feature(origin.points[nearest_to_origin,],
+                                          edges)
+nearest_edge_destination <- st_nearest_feature(destination.points[nearest_to_destination,],
+                                               edges)
 
-
+# check graph
 ggplot()+
   geom_sf(data = feature_o) +
   geom_sf(data = edges) +
@@ -268,11 +271,26 @@ ggplot()+
           size = 5)+
   geom_sf(data = des, colour = "orange", size = 5)+
   geom_sf(data = destination.points[nearest_to_destination,], colour = "red",
-        size = 5)
+          size = 5)
+
+# find nodes corresponding to edges
+my.origin <- nodes.index %>% filter(edgeID == nearest_edge_origin )
+origin.node <- my.origin$nodeID[1:2]
+origin.node
+
+my.destination <- nodes.index %>% filter(edgeID == nearest_edge_destination)
+destination.node <- my.destination$nodeID[1:2]
+destination.node
+
+
 
 # find shortest path
 node_o <- all_nodes[origin.node, ]
 node_d <- all_nodes[destination.node, ]
+
+
+# calculate paths (there are 4 variants)
+
 
 path1 <- shortest_paths(
   graph = graph,
@@ -286,9 +304,150 @@ path_graph1 <- graph %>%
   subgraph.edges(eids = path1$epath %>% unlist()) %>%
   as_tbl_graph()
 
+path2 <- shortest_paths(
+  graph = graph,
+  from = origin.node[2] , # new origin
+  to = destination.node[2],   # new destination
+  output = 'both',
+  weights = graph %>% activate(edges) %>% pull(length)
+)
+
+path_graph2 <- graph %>%
+  subgraph.edges(eids = path2$epath %>% unlist()) %>%
+  as_tbl_graph()
+
+path3 <- shortest_paths(
+  graph = graph,
+  from = origin.node[1] , # new origin
+  to = destination.node[2],   # new destination
+  output = 'both',
+  weights = graph %>% activate(edges) %>% pull(length)
+)
+
+path_graph3 <- graph %>%
+  subgraph.edges(eids = path3$epath %>% unlist()) %>%
+  as_tbl_graph()
+
+path4 <- shortest_paths(
+  graph = graph,
+  from = origin.node[2] , # new origin
+  to = destination.node[1],   # new destination
+  output = 'both',
+  weights = graph %>% activate(edges) %>% pull(length)
+)
+
+path_graph4 <- graph %>%
+  subgraph.edges(eids = path4$epath %>% unlist()) %>%
+  as_tbl_graph()
+
+### making the multilines singular
+my.path1 <- path_graph1 %>% activate(edges) %>% as_tibble() %>% st_as_sf() 
+my.path2 <- path_graph2 %>% activate(edges) %>% as_tibble() %>% st_as_sf() 
+my.path3 <- path_graph3 %>% activate(edges) %>% as_tibble() %>% st_as_sf() 
+my.path4 <- path_graph4 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+
+ggplot()+
+  geom_sf(data = my.path1)+
+  geom_sf(data = my.path2)+
+  geom_sf(data = my.path3)+
+  geom_sf(data = my.path4)
+
+### critical step  if 
+
+if (nrow(my.path1) == 0 & nrow(my.path2) == 0 & nrow(my.path3) == 0 & nrow(my.path4) == 0) {
+  
+  ggplot() +
+    theme_void()+
+    # geom_sf(data = nodes, colour = "blue")+
+    geom_sf(data = graph %>% activate(edges) %>% as_tibble() %>% st_as_sf(), col = 'darkgrey') +
+    #  geom_sf(data = graph %>% activate(nodes) %>% as_tibble() %>% st_as_sf(), col = 'blue', size = 0.5) +
+    # geom_sf(data = path_graph %>% activate(edges) %>% as_tibble() %>% st_as_sf(), lwd = 1, col = 'yellow') +
+    geom_sf(data = origin.points[nearest_to_origin,], colour = "red", size =5) +
+    geom_sf(data = destination.points[nearest_to_destination,], colour = "red", size = 5)+
+    ggtitle("No connecting path")+
+    labs(subtitle = nrow(parts))
+  
+  
+} else {
+  
+  # make a union (combine with shared geometry)
+  my.path <- rbind(my.path1, my.path2, my.path3, my.path4) 
+  
+  # note the bit before is different in 4.2.1
+  my.path <- my.path  %>%  
+    summarize(geometry = st_union(st_geometry(my.path))) %>% 
+    st_line_merge() 
+  
+  merged.line <- my.path  %>% 
+    summarize(geometry = st_combine(st_geometry(my.path))) %>% 
+    st_line_merge() 
+  
+  
+  ### the blade 
+  # cutting the line
+  # make the blade for cutting
+  blade <- rbind(origin.points[nearest_to_origin,], 
+                 destination.points[nearest_to_destination,])  %>% st_as_sf()
+  
+  
+  # snapping
+  # turn reach into 10 m lengths
+  ten.m.lengths <-round(as.numeric(st_length(merged.line))/ 10  , 0)
+  merged.line.points <- st_sample(merged.line, size = ten.m.lengths, type = "regular") %>% st_as_sf()
+  
+  # find the nearest nodes which relate to the blade (observations)
+  nrst <- st_nearest_points(blade, merged.line.points) %>%
+    st_cast("POINT") %>% st_as_sf()
+  
+  # keep only the end nodes 
+  p_snapped <- nrst[seq(from = 2, to = nrow(nrst), by = 2),]
+  
+  # merge the lines to produce an emulation of the reach
+  merged.lines <- merged.line.points %>% st_cast("LINESTRING")
+  
+  # split the emulation by the blade
+  parts <- st_collection_extract(st_split(merged.lines$x,p_snapped$x ),"LINESTRING") %>% 
+    st_as_sf() 
   
   
   
+  # find the middle point of a line 
+  # if there are 3 lines it  will touch both other lines
+  # if there are two lines it will intersect with the blade
+  middle <- if(nrow(parts) == 3){
+    parts[lengths(st_touches(parts)) > 1,]
+  } else if(nrow(parts) == 2) {
+    # parts %>% st_filter(st_buffer(blade, 10), .predicates = st_intersects) # buffering because can miss
+    # this is where there is an ongoing issue
+    touchy <- st_intersects(parts, st_buffer(blade, 200))
+    parts[lengths(touchy) >= 2,]
+  } else  {
+    parts}
+  
+  
+  
+  
+  # graph
+  ggplot() +
+    theme_void()+
+    # geom_sf(data = nodes, colour = "blue")+
+    geom_sf(data = graph %>% activate(edges) %>% as_tibble() %>% st_as_sf(), col = 'darkgrey') +
+    #  geom_sf(data = graph %>% activate(nodes) %>% as_tibble() %>% st_as_sf(), col = 'blue', size = 0.5) +
+    # geom_sf(data = path_graph %>% activate(edges) %>% as_tibble() %>% st_as_sf(), lwd = 1, col = 'yellow') +
+    geom_sf(data = origin.points[nearest_to_origin,], colour = "red", size =5) +
+    geom_sf(data = destination.points[nearest_to_destination,], colour = "red", size = 5)+
+    #geom_sf(data = parts[1,], colour = "yellow", lwd =1)+
+    # geom_sf(data = parts[2,], colour = "red", lwd =1)+
+    geom_sf(data = middle, colour = "firebrick", lwd =1)+
+    ggtitle(paste0("Reach length = ", comma(st_length(middle) %>% round(0) %>% as.numeric()), " m"))+
+    labs(subtitle = nrow(parts))
+  
+}
+
+  
+  
+
+
 
 
   
