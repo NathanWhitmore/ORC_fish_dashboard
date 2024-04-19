@@ -122,6 +122,35 @@ ggplot()+
   scale_colour_manual(values = c("black", "red"))
 
 
+### leaflet
+
+leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+  
+  # add base maps
+  addProviderTiles("Esri.WorldImagery",
+                   # give the layer a name
+                   group = "World") %>%
+  # set zoom and position
+  setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
+  addPolylines(data = masked.rec.species %>% st_transform(crs =4326),
+               color = "blue",
+               fillOpacity = 0.001,
+               weight = 2) %>% 
+  addPolylines(data = known %>% st_transform(crs =4326),
+              color = "red",
+              fillOpacity = 0.001,
+              weight = 3) %>%
+  addMarkers(data = my.fish %>% st_transform(crs =4326)) 
+  
+  
+
+
+
+
+
+#### 
 # filter for single catchment
 rec.catchment <- masked.rec.species %>% filter(Catchment == "Akatore Creek")
 known.catchment <- st_intersection(known, rec.catchment)
@@ -237,6 +266,7 @@ all_coords <- all_nodes %>%
 
 # semi-random destination
 set.seed(487)
+
 des <- st_sample(edges, size = 1, type = "random") %>% st_cast("POINT")
 
 # find nearest point on line point will be nearest edge(need to snap to line)
@@ -446,6 +476,50 @@ if (nrow(my.path1) == 0 & nrow(my.path2) == 0 & nrow(my.path3) == 0 & nrow(my.pa
 
   
   
+river.zone <- graph %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+my.origin <- origin.points[nearest_to_origin,]
+my.destination <- destination.points[nearest_to_destination,]
+
+
+icon.home <- makeAwesomeIcon(icon = 'home', markerColor = 'green', library='ion')
+icon.star <- makeAwesomeIcon(icon = 'star', markerColor = 'green', library='ion')
+icon.bridge <- makeAwesomeIcon(icon = 'road', markerColor = 'green', library='glyphicon')
+icon.culvert <- makeAwesomeIcon(icon = 'refresh', markerColor = 'blue')
+icon.unknown<- makeAwesomeIcon(icon = 'magnet', markerColor = 'red')
+icon.natural <- makeAwesomeIcon(icon = 'leaf', markerColor = 'green')
+icon.dam <- makeAwesomeIcon(icon = 'stop', markerColor = 'blue', library='ion')
+icon.flap.no.culvert <- makeAwesomeIcon(icon = 'plus', markerColor = 'purple', library='ion')
+icon.flap.culvert <- makeAwesomeIcon(icon = 'plus-circled', markerColor = 'purple', library='ion')
+icon.ford.no.culvert <- makeAwesomeIcon(icon = 'android-arrow-dropright', markerColor = 'red', library='ion')
+icon.ford.culvert <- makeAwesomeIcon(icon = 'android-arrow-dropright-circle', markerColor = 'red', library='ion')
+icon.weir <- makeAwesomeIcon(icon = 'android-funnel', markerColor = 'blue', library='ion')
+icon.other <- makeAwesomeIcon(icon = 'android-search', markerColor = 'blue', library='ion')
+icon.bridge <- makeAwesomeIcon(icon = 'android-car', markerColor = 'blue', library='ion')
+
+
+leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+  
+  # add base maps
+  addProviderTiles("Esri.WorldImagery",
+                   # give the layer a name
+                   group = "World") %>%
+  # set zoom and position
+  setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
+  addPolylines(data = river.zone  %>% st_transform(crs =4326),
+               color = "blue",
+               #fillOpacity = 0.001,
+               weight = 2) %>% 
+  addPolylines(data = middle %>% st_transform(crs =4326),
+               color = "yellow",
+               #fillOpacity = 0.001,
+               weight = 5) %>%
+  addAwesomeMarkers(data = my.origin  %>% st_transform(crs =4326),
+                    icon = icon.bridge) %>%
+  addAwesomeMarkers(data = my.destination  %>% st_transform(crs =4326),
+             icon = icon.star)
+
 
 
 
