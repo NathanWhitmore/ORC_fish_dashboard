@@ -28,7 +28,6 @@ font-family: "Candara";
 
 
 ```{r}
-
 library(sf)
 library(tidyverse)
 library(lubridate)
@@ -61,89 +60,179 @@ Sample locations
 
 Column {.sidebar}
 -------------------------------------
+
+**Upload species locations**
+
 ```{r}
+# Upload
+
 fileInput("file1", "Choose CSV File",
                     multiple = FALSE)
 
 
 my.fish <- eventReactive(input$file1,{
-  read.csv(input$file1$datapath) %>%
+  
+  fish <- read.csv(input$file1$datapath) %>%
     st_as_sf(coords = c("Long", "Lat"),
                crs = 4326) %>% 
     st_transform(crs = 2193)
   
+  fish$ref <- 1:nrow(fish)
+  fish
 
 
 })
 ```
 
+<br/>
 
 ```{r}
-# read in province data
-# select provincial boundaries
+renderUI({
+  
+  selectInput("start", label = "Start", 
+    choices = sort(unique(my.fish()$ref)),
+    selected = character(0)
+  )
+  
+})
+
+renderUI({
+  
+  selectInput("end", label = "End", 
+    choices = sort(unique(my.fish()$ref)),
+    selected = character(0)
+  )
+
+  
+})
+
+```
+
+<br/>
+
+
+```{r}
+# Create a button for the user to submit the input
+actionButton("submit", "Confirm start & end points")
+
+my.path <- eventReactive(input$submit,{
+  
+  my.path <- my.fish() %>% filter(ref %in% c(input$start, input$end))
+  my.path
+  
+})
+```
+
+```{r}
+# read spatial data
+
+# regional boundaries
 boundaries <- st_read("Regional boundaries\\regional-council-2022-generalised.shp", quiet = TRUE) %>%
   st_transform(2193)
 
+# otago boundaries
 otago <- boundaries %>% filter(boundaries$REGC2022_1 == "Otago Region") %>%
   st_transform(2193)
 
-# Reads in massive REC files (gbd format)
+# catchments
+catchments <- st_read("ORC_Catchments\\ORC_Catchments.shp", quiet = TRUE) 
+
+# reads in REC files (gbd format)
 rec <- st_read("C:\\Users\\Nathan\\Downloads\\REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
   st_transform(2193)
 
-# get known species data
+# reads in non-migratory data
 non.mig <-  st_read(
   "Your Non-Migratory Freshwater Fish Distribution/Non_migratory_Freshwater_Fish_Distribution.shp",
   quiet = TRUE
 ) %>%
   st_transform(2193)
 
-my.species <- "Galaxias depressiceps"
-known <- non.mig %>% filter(Species == my.species)
 ```
 
-
-
 ```{r}
-# compile max reasonable extent
-
-masked.rec.species <- reactive({
-  
-box.known <-  
-  st_as_sfc(st_bbox(known)) %>% 
-  st_as_sf() %>%
-  st_buffer(10000)
-
-box.my <-  reactive({
-  st_as_sfc(st_bbox(my.fish())) %>% 
-  st_as_sf() %>% 
-  st_buffer(10000)
-})
-
-# join and find extent for cropping
-combined <- rbind(box.known, box.my)
-combined <- st_as_sfc(st_bbox(combined)) %>% 
-  st_as_sf() 
-
-# crop rec
-rec.species <- st_crop(rec, combined) 
-
-masked.rec.species <- st_intersection(rec.species, catchments.filtered)
-
-masked.rec.species
-
-})
+# filter non-migratory data
+my.species <- "Galaxias depressiceps"
+known <- non.mig %>% filter(Species == my.species)
 ```
 
 ```{r}
 # buffer in meters
 my.buffer <- 20
-known.buffered <- st_buffer(known, my.buffer )
+known.buffered <- st_buffer(known, my.buffer )%>%
+  st_transform(2193)
 ```
+
+```{r}
+# compile max reasonable extent
+box.known <-  
+  st_as_sfc(st_bbox(known)) %>% 
+  st_as_sf() %>%
+  st_buffer(10000)
+
+box.my <- reactive({
+  
+  st_as_sfc(st_bbox(my.fish())) %>% 
+  st_as_sf() %>% 
+  st_buffer(10000)
+  
+}) 
+  
+
+# join and find extent for cropping
+
+rec.species <- reactive({
+  
+  combined <- rbind(box.known, box.my())
+  combined <- st_as_sfc(st_bbox(combined)) %>% 
+  st_as_sf()  
+  
+  rec.species <- st_crop(rec, combined) 
+  rec.species
+  
+})
+
+
+
+
+```
+
+
+```{r}
+# otago catchments
+
+catchments.filtered  <- reactive({
+  
+  catchments$show <- 
+  ifelse(lengths(st_intersects(catchments, known.buffered)) > 0 |
+                   lengths(st_intersects(catchments, my.fish())) >0,
+                           "yes",
+                           "no")
+
+catchments.filtered <- catchments %>% filter(show == "yes")
+catchments.filtered 
+
+})
+
+
+
+```
+
+```{r}
+# reduce 
+masked.rec.species <- reactive({
+  
+  st_intersection(rec.species(), catchments.filtered())
+  
+})
+```
+
 
 
 Column
 -------------------------------------
+
+
 ```{r}
 
 output$mymap  <- renderLeaflet({
@@ -158,11 +247,17 @@ leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
   setView(lng = 169,
           lat = -45.9,
           zoom = 8) %>%
-  addMarkers(data = my.fish() %>% st_transform(crs =4326)) %>%
-     addPolylines(data = masked.rec.species() %>% st_transform(crs =4326),
-               color = "blue",
-               fillOpacity = 0.001,
-               weight = 2)
+  addMarkers(data = my.fish() %>% 
+               st_transform(crs =4326),
+             popup = paste(my.fish()$ref)) %>%
+  addPolygons(data = catchments.filtered() %>% st_transform(crs =4326),
+              fillOpacity = 0.001,
+              color = "red",
+              weight = 3) %>%
+    addPolylines(data = masked.rec.species() %>% st_transform(crs =4326),
+              fillOpacity = 0.001,
+              color = "white",
+              weight = 3)
   
 })
 
@@ -170,13 +265,45 @@ leafletOutput('mymap', height=1000)
 
 ```
 
-Column
--------------------------------------
+Pathways
+=====================================
+```{r}
+
+renderLeaflet({
+  
+leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+  
+  # add base maps
+  addProviderTiles("Esri.WorldImagery",
+                   # give the layer a name
+                   group = "World") %>%
+  # set zoom and position
+  setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
+  addMarkers(data = my.path() %>% 
+               st_transform(crs = 4326)) %>%
+  addPolygons(data = catchments.filtered() %>% st_transform(crs =4326),
+              fillOpacity = 0.001,
+              color = "red",
+              weight = 3) %>%
+    addPolylines(data = masked.rec.species() %>% st_transform(crs =4326),
+              fillOpacity = 0.001,
+              color = "white",
+              weight = 3)
+  
+})
+
+
+```
+
+
+Data
+=====================================
 ```{r}
 renderPrint({
   
-  head(masked.rec.species())
-  
+  my.fish()
 })
 ```
 
