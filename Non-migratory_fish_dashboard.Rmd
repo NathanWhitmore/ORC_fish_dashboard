@@ -1,0 +1,182 @@
+---
+title: "ORC fish dashboard"
+runtime: shiny
+output:
+  flexdashboard::flex_dashboard:
+    navbar:
+      - { title: "reproducible.co.nz", href: "https://reproducible.co.nz", align: right }
+    orientation: rows
+    vertical_layout: fill
+    theme: spacelab
+    source_code: embed 
+---
+<style>
+
+body {
+  padding-top: 70px;
+}
+
+
+.navbar-brand {
+font-family: "Candara";
+  font-weight: bold;
+  font-size: 24px;
+}
+
+
+</style>
+
+
+```{r}
+
+library(sf)
+library(tidyverse)
+library(lubridate)
+library(leaflet)
+library(shiny)
+library(shinyWidgets)
+library(flexdashboard)
+library(plotly)
+library(viridis)
+library(DT)
+library(readxl)
+library(factoextra)
+library(leaflet.extras)
+library(geojsonsf)
+library(jsonify)
+library(stringr)
+library(janitor)
+library(lwgeom) # for st_split
+library(tidygraph)
+library(sfnetworks)
+library(igraph)
+library(scales)
+```
+
+
+
+
+Sample locations
+=====================================
+
+Column {.sidebar}
+-------------------------------------
+```{r}
+fileInput("file1", "Choose CSV File",
+                    multiple = FALSE)
+
+
+my.fish <- eventReactive(input$file1,{
+  read.csv(input$file1$datapath) %>%
+    st_as_sf(coords = c("Long", "Lat"),
+               crs = 4326) %>% 
+    st_transform(crs = 2193)
+  
+
+
+})
+```
+
+
+```{r}
+# read in province data
+# select provincial boundaries
+boundaries <- st_read("Regional boundaries\\regional-council-2022-generalised.shp", quiet = TRUE) %>%
+  st_transform(2193)
+
+otago <- boundaries %>% filter(boundaries$REGC2022_1 == "Otago Region") %>%
+  st_transform(2193)
+
+# Reads in massive REC files (gbd format)
+rec <- st_read("C:\\Users\\Nathan\\Downloads\\REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
+  st_transform(2193)
+
+# get known species data
+non.mig <-  st_read(
+  "Your Non-Migratory Freshwater Fish Distribution/Non_migratory_Freshwater_Fish_Distribution.shp",
+  quiet = TRUE
+) %>%
+  st_transform(2193)
+
+my.species <- "Galaxias depressiceps"
+known <- non.mig %>% filter(Species == my.species)
+```
+
+
+
+```{r}
+# compile max reasonable extent
+
+masked.rec.species <- reactive({
+  
+box.known <-  
+  st_as_sfc(st_bbox(known)) %>% 
+  st_as_sf() %>%
+  st_buffer(10000)
+
+box.my <-  reactive({
+  st_as_sfc(st_bbox(my.fish())) %>% 
+  st_as_sf() %>% 
+  st_buffer(10000)
+})
+
+# join and find extent for cropping
+combined <- rbind(box.known, box.my)
+combined <- st_as_sfc(st_bbox(combined)) %>% 
+  st_as_sf() 
+
+# crop rec
+rec.species <- st_crop(rec, combined) 
+
+masked.rec.species <- st_intersection(rec.species, catchments.filtered)
+
+masked.rec.species
+
+})
+```
+
+```{r}
+# buffer in meters
+my.buffer <- 20
+known.buffered <- st_buffer(known, my.buffer )
+```
+
+
+Column
+-------------------------------------
+```{r}
+
+output$mymap  <- renderLeaflet({
+  
+leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+  
+  # add base maps
+  addProviderTiles("Esri.WorldImagery",
+                   # give the layer a name
+                   group = "World") %>%
+  # set zoom and position
+  setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
+  addMarkers(data = my.fish() %>% st_transform(crs =4326)) %>%
+     addPolylines(data = masked.rec.species() %>% st_transform(crs =4326),
+               color = "blue",
+               fillOpacity = 0.001,
+               weight = 2)
+  
+})
+
+leafletOutput('mymap', height=1000)
+
+```
+
+Column
+-------------------------------------
+```{r}
+renderPrint({
+  
+  head(masked.rec.species())
+  
+})
+```
+
