@@ -86,7 +86,24 @@ my.fish <- eventReactive(input$file1,{
 
 <br/>
 
+**Filter**
 
+Please narrow your search to only the catchments required (this minimises unnecessary computation).
+
+```{r}
+
+
+renderUI({  
+selectInput("my.catchments", label = "Catchments", 
+    choices = sort(unique(catchments.filtered()$Catchment)),
+    multiple = TRUE
+)
+})
+  
+```
+
+
+<br/>
 
 ```{r}
 renderUI({
@@ -138,7 +155,6 @@ otago <- boundaries %>% filter(boundaries$REGC2022_1 == "Otago Region") %>%
 
 # catchments
 catchments <- st_read("ORC_Catchments\\ORC_Catchments.shp", quiet = TRUE) 
-
 
 # reads in REC files (gbd format)
 rec <- st_read("C:\\Users\\Nathan\\Downloads\\REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
@@ -225,7 +241,7 @@ catchments.filtered
 # reduce 
 masked.rec.species <- reactive({
   
-  st_intersection(rec.species(), catchments.filtered())
+  st_intersection(rec.species(), final.catchments())
   
 })
 ```
@@ -250,14 +266,15 @@ leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
   setView(lng = 169,
           lat = -45.9,
           zoom = 8) %>%
+  addPolygons(data = catchments.filtered() %>% st_transform(crs =4326),
+              fillOpacity = 0.1,
+              color = "red",
+              weight = 3,
+              popup = paste(catchments.filtered()$Catchment))%>%
   addMarkers(data = my.fish() %>% 
                st_transform(crs =4326),
              popup = paste(my.fish()$ref)) %>%
-  addPolygons(data = catchments.filtered() %>% st_transform(crs =4326),
-              fillOpacity = 0.001,
-              color = "red",
-              weight = 3) %>%
-    addPolylines(data = masked.rec.species() %>% st_transform(crs =4326),
+  addPolylines(data = masked.rec.species() %>% st_transform(crs =4326),
               fillOpacity = 0.001,
               color = "white",
               weight = 3)
@@ -275,33 +292,10 @@ Pathways
 Column {.sidebar}
 -------------------------------------
 
-The network analysis which is about to be undertaken is computational intensive. The analysis can be speed up by only selecting the minimal catchments required.
-
-**Step 3:** select catchments for inclusion
-
-```{r}
-
-
-renderUI({  
-selectInput("my.catchments", label = "Catchments", 
-    choices = sort(unique(catchments.filtered()$Catchment)),
-    multiple = TRUE
-)
-})
-  
-```
-
-<br/>
-
-```{r}
-actionButton("lock", "Confirm catchments")
-```
-
 ```{r}
 # filter by my catchments
 
-final.catchments <- eventReactive(input$lock,
-                                  {
+final.catchments <- reactive({
   
   final.catchments <- catchments.filtered() %>% 
     filter(Catchment %in% input$my.catchments)
@@ -350,14 +344,142 @@ leafletOutput('mycatch', height=1000)
 
 
 
+```{r}
+########## Network analysis
+# Step 1: make edges
+edges <- reactive ({
+  masked.rec.species() %>%
+    mutate(edgeID = c(1:n()))
+  
+})
 
+
+# Step 2: make nodes from edges
+nodes <- reactive ({
+  edges() %>%
+    st_coordinates() %>%
+    as_tibble() %>%
+    rename(edgeID = L1) %>%
+    group_by(edgeID) %>%
+    slice(c(1, n())) %>%
+    ungroup() %>%
+    mutate(start_end = rep(c('start', 'end'), times = n() / 2))
+  
+})
+
+# Step 3: Give each node a unique index
+
+# make moniker
+nodes.index  <- reactive ({
+  nodes.index  <- nodes()
+  
+  nodes.index$xy <-  paste(nodes.index$X, nodes.index$Y)
+  nodes.index$xy <-
+    factor(nodes.index$xy, levels = unique(nodes.index$xy))
+  nodes.index$nodeID <- as.numeric(nodes.index$xy)
+  nodes.index$xy <- NULL
+  
+  nodes.index
+  
+})
+
+# Step 4: Combine the node indices with the edges
+
+edges2 <- reactive({
+  
+  source_nodes <- nodes.index() %>%
+    filter(start_end == 'start') %>%
+    pull(nodeID)
+  
+  target_nodes <- nodes.index() %>%
+    filter(start_end == 'end') %>%
+    pull(nodeID)
+  
+  edges2 <-  edges() %>%
+    mutate(from = source_nodes, to = target_nodes)
+  
+  edges2
+  
+})
+
+
+# Step 5: Convert to tbl_graph
+graph <-  reactive({
+  
+  graph <- tbl_graph(nodes = nodes(), 
+                     edges = as_tibble(edges2()), 
+                    directed = FALSE) %>% 
+    activate(edges2()) %>% 
+    mutate(length = st_length(st_geometry(edges2)))
+
+
+# this might be a version 4.2.1 solution only
+ # graph <- graph %>% activate(edges2()) %>% mutate(length = st_length(st_geometry(edges2)))
+  
+  graph
+  
+})
+
+# Step 6: Get all nodes in the network
+all_nodes <- reactive({
+  
+  graph() %>%
+  activate(nodes()) %>%
+  as_tibble() %>%
+  st_as_sf()
+  
+})
+
+
+# Step 7: Get coordinates of all nodes in the network
+
+all_coords <- reactive({
+  
+  all_nodes() %>%
+  st_coordinates()
+  
+})
+
+
+```
 
 Data
 =====================================
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+
+### Step 1: make edges
 ```{r}
-renderPrint({
-  
-  my.fish()
-})
+renderPrint({edges()})
 ```
 
+### Step 2: make nodes from edges
+```{r}
+renderPrint({nodes()})
+```
+
+### Step 3: Give each node a unique index
+```{r}
+renderPrint({ nodes.index()})
+```
+
+### Step 4: Combine the node indices with the edges
+```{r}
+renderPrint({edges2()})
+```
+
+### Step 5: Get all nodes in the network
+```{r}
+renderPrint({graph()})
+```
+
+### Step 6: Get all nodes in the network
+```{r}
+renderPrint({all_nodes()})
+```
+
+### Step 7: Get coordinates of all nodes in the network
+```{r}
+renderPrint({all_coords()})
+```
