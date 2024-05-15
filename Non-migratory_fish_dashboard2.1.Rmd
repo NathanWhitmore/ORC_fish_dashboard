@@ -386,7 +386,6 @@ nodes.index  <- reactive ({
 # Step 4: Combine the node indices with the edges
 
 edges2 <- reactive({
-  
   source_nodes <- nodes.index() %>%
     filter(start_end == 'start') %>%
     pull(nodeID)
@@ -403,43 +402,62 @@ edges2 <- reactive({
 })
 
 
-# Step 5: Convert to tbl_graph
+# Step 5: Remove duplicate nodes
+nodes2 <- reactive({
+  nodes2 <- nodes.index() %>%
+    distinct(nodeID, .keep_all = TRUE) %>%
+    select(-c(edgeID, start_end)) %>%
+    st_as_sf(coords = c('X', 'Y')) %>%
+    st_set_crs(st_crs(edges2()))
+  
+  nodes2
+  
+})
+
+# make tibble graph
+
+
+
+# Step 6: Convert to tbl_graph
 graph <-  reactive({
+  # note that nodes and edges now refer to the tbl_graph variables
+  # not reactive object
+  my.graph <- tbl_graph(nodes = nodes2(),
+                        edges = as_tibble(edges2()),
+                        directed = FALSE) %>%
+    activate(edges) %>%
+    mutate(length = st_length(st_geometry(edges2())))
   
-  graph <- tbl_graph(nodes = nodes(), 
-                     edges = as_tibble(edges2()), 
-                    directed = FALSE) %>% 
-    activate(edges2()) %>% 
-    mutate(length = st_length(st_geometry(edges2)))
-
-
-# this might be a version 4.2.1 solution only
- # graph <- graph %>% activate(edges2()) %>% mutate(length = st_length(st_geometry(edges2)))
-  
-  graph
+  my.graph
   
 })
 
-# Step 6: Get all nodes in the network
+
+# Step 7: Get all nodes in the network
+
 all_nodes <- reactive({
+  all.nodes <- tbl_graph(nodes = nodes2(),
+                         edges = as_tibble(edges2()),
+                         directed = FALSE) %>%
+    activate(edges) %>%
+    mutate(length = st_length(st_geometry(edges2()))) %>%
+    activate(nodes) %>%
+    as_tibble() %>%
+    st_as_sf()
   
-  graph() %>%
-  activate(nodes()) %>%
-  as_tibble() %>%
-  st_as_sf()
+  
+  all.nodes
   
 })
 
 
-# Step 7: Get coordinates of all nodes in the network
+# Step 8: Get coordinates of all nodes in the network
 
 all_coords <- reactive({
-  
   all_nodes() %>%
-  st_coordinates()
+    st_coordinates()
   
 })
-
 
 ```
 
@@ -469,17 +487,22 @@ renderPrint({ nodes.index()})
 renderPrint({edges2()})
 ```
 
-### Step 5: Get all nodes in the network
+### Step 5: Remove duplicate nodes
 ```{r}
-renderPrint({graph()})
+renderPrint({nodes2()})
 ```
 
 ### Step 6: Get all nodes in the network
 ```{r}
+renderPrint({graph()})
+```
+
+### Step 7: Get all nodes in the network
+```{r}
 renderPrint({all_nodes()})
 ```
 
-### Step 7: Get coordinates of all nodes in the network
+### Step 8: Get coordinates of all nodes in the network
 ```{r}
 renderPrint({all_coords()})
 ```
