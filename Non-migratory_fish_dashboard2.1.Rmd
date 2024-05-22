@@ -134,10 +134,10 @@ renderUI({
 # Create a button for the user to submit the input
 actionButton("submit", "Confirm start & end points")
 
-my.path <- eventReactive(input$submit,{
+my.start.end <- eventReactive(input$submit,{
   
-  my.path <- my.fish() %>% filter(ref %in% c(input$start, input$end))
-  my.path
+  my.start.end <- my.fish() %>% filter(ref %in% c(input$start, input$end))
+  my.start.end
   
 })
 ```
@@ -285,7 +285,7 @@ leafletOutput('mymap', height=1000)
 
 ```
 
-Pathways
+Selection
 =====================================
 
 
@@ -324,7 +324,7 @@ leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
   setView(lng = 169,
           lat = -45.9,
           zoom = 8) %>%
-  addMarkers(data = my.path() %>% 
+  addMarkers(data = my.start.end() %>% 
                st_transform(crs = 4326)) %>%
   addPolygons(data = final.catchments() %>% 
                 st_transform(crs = 4326),
@@ -461,6 +461,311 @@ all_coords <- reactive({
 
 ```
 
+
+```{r}
+# find nearest point on line point will be nearest edge(need to snap to line)
+origin.points <- reactive({
+  
+  feature_o <- edges2()[st_nearest_feature(my.start.end()[1,], edges2()),]
+  
+  # sample feature every 10 m
+  ten.m.lengths <-round(as.numeric(st_length(feature_o))/ 10  , 0)
+  
+  origin.points <- st_sample(feature_o,
+                             size = ten.m.lengths, type = "regular") %>%
+    st_as_sf() %>%
+    st_cast("POINT")
+  
+  # nearest point spatial feature
+  nearest_to_origin <- st_nearest_feature(my.start.end()[1,], origin.points)
+  
+  # nearest edge on network
+  no <- origin.points[nearest_to_origin,]
+  
+  no
+  
+})
+
+destination.points <- reactive({
+  
+  feature_d <- edges2()[st_nearest_feature(my.start.end()[2,], edges2()),]
+  
+  # sample feature every 10 m
+  ten.m.lengths <-round(as.numeric(st_length(feature_d))/ 10  , 0)
+  
+  destination.points <- st_sample(feature_d,
+                             size = ten.m.lengths, type = "regular") %>%
+    st_as_sf() %>%
+    st_cast("POINT")
+  
+    # nearest point spatial feature
+  nearest_to_des <- st_nearest_feature(my.start.end()[2,], destination.points)
+  
+  # nearest edge on network
+  nd <- destination.points[nearest_to_des,]
+  
+  nd
+  
+  
+  
+  
+})
+
+```
+
+Path
+=====================================
+
+```{r}
+
+
+middle <- reactive({
+  # nearest edge on network
+  nearest_edge_origin <-
+    st_nearest_feature(origin.points(), edges2())
+  nearest_edge_destination <-
+    st_nearest_feature(destination.points(), edges2())
+  
+  # find nodes corresponding to edges
+  my.origin <-
+    nodes.index() %>% filter(edgeID == nearest_edge_origin)
+  origin.node <- my.origin$nodeID[1:2]
+  origin.node
+  
+  my.destination <-
+    nodes.index() %>% filter(edgeID == nearest_edge_destination)
+  destination.node <- my.destination$nodeID[1:2]
+  destination.node
+  
+  # find shortest path
+  node_o <- all_nodes()[origin.node,]
+  node_d <- all_nodes()[destination.node,]
+  
+  # calculate paths (there are 4 variants)
+  path1 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[1] ,
+    # new origin
+    to = destination.node[1],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph1 <- graph() %>%
+    subgraph.edges(eids = path1$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  path2 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[2] ,
+    # new origin
+    to = destination.node[2],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph2 <- graph() %>%
+    subgraph.edges(eids = path2$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  path3 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[1] ,
+    # new origin
+    to = destination.node[2],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph3 <- graph() %>%
+    subgraph.edges(eids = path3$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  path4 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[2] ,
+    # new origin
+    to = destination.node[1],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph4 <- graph() %>%
+    subgraph.edges(eids = path4$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  ### making the multilines singular
+  my.path1 <-
+    path_graph1 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  my.path2 <-
+    path_graph2 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  my.path3 <-
+    path_graph3 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  my.path4 <-
+    path_graph4 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  
+
+    my.path <- rbind(my.path1, my.path2, my.path3, my.path4)
+    
+    my.path 
+    
+    # note the bit before is different in 4.2.1
+    my.path <- my.path  %>%
+      summarize(geometry = st_union(st_geometry(my.path))) %>%
+      st_line_merge()
+    
+    merged.line <- my.path  %>%
+      summarize(geometry = st_combine(st_geometry(my.path))) %>%
+      st_line_merge()
+    
+    
+    ### the blade
+    # cutting the line
+    # make the blade for cutting
+    blade <- rbind(origin.points(),
+                   destination.points())  %>% st_as_sf()
+    
+    
+    # snapping
+    # turn reach into 10 m lengths
+    ten.m.lengths <- round(as.numeric(st_length(merged.line)) / 10  , 0)
+    merged.line.points <-
+      st_sample(merged.line, size = ten.m.lengths, type = "regular") %>% st_as_sf()
+    
+    # find the nearest nodes which relate to the blade (observations)
+    nrst <- st_nearest_points(blade, merged.line.points) %>%
+      st_cast("POINT") %>% st_as_sf()
+    
+    # keep only the end nodes
+    p_snapped <- nrst[seq(from = 2,
+                          to = nrow(nrst),
+                          by = 2), ]
+    
+    # merge the lines to produce an emulation of the reach
+    merged.lines <- merged.line.points %>% st_cast("LINESTRING")
+    
+    # split the emulation by the blade
+    parts <-
+      st_collection_extract(st_split(merged.lines$x, p_snapped$x), "LINESTRING") %>%
+      st_as_sf()
+    
+    # find the middle point of a line
+    # if there are 3 lines it  will touch both other lines
+    # if there are two lines it will intersect with the blade
+    middle <- if (nrow(parts) == 3) {
+      parts[lengths(st_touches(parts)) > 1, ]
+    } else if (nrow(parts) == 2) {
+      # parts %>% st_filter(st_buffer(blade, 10), .predicates = st_intersects) # buffering because can miss
+      # this is where there is an ongoing issue
+      touchy <- st_intersects(parts, st_buffer(blade, 200))
+      parts[lengths(touchy) >= 2, ]
+    } else  {
+      parts
+    }
+    
+    
+    middle
+  
+})
+
+```
+
+```{r}
+
+renderPlot({
+  ggplot() +
+    theme_void()+
+    geom_sf(data = graph() %>% activate(edges) %>% as_tibble() %>% st_as_sf(),
+  colour = "darkgrey") +
+    geom_sf(data = origin.points(), colour = "red", size =5) +
+    geom_sf(data = destination.points(), colour = "red", size = 5)+
+    geom_sf(data = middle(), colour = "firebrick", lwd =1)+
+    ggtitle(paste0("Reach length = ", comma(st_length(middle()) %>% round(0) %>% as.numeric()), " m"))
+})
+```
+
+Path leaflet
+=====================================
+
+```{r}
+output$pathleaf  <- renderLeaflet({
+  
+leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+  
+  # add base maps
+  addProviderTiles("Esri.WorldImagery",
+                   # give the layer a name
+                   group = "World") %>%
+  # set zoom and position
+  setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
+  addMarkers(data = my.start.end() %>% 
+               st_transform(crs = 4326)) %>%
+  addPolygons(data = final.catchments() %>% 
+                st_transform(crs = 4326),
+              fillOpacity = 0.001,
+              color = "red",
+              weight = 3) %>%
+  addPolylines(data = middle() %>% 
+                   st_transform(crs = 4326),
+              fillOpacity = 0.001,
+              color = "yellow",
+              weight = 3)
+  
+})
+
+leafletOutput('pathleaf', height=1000)
+```
+
+
+Interim
+=====================================
+
+```{r}
+
+output$interim  <- renderLeaflet({
+  
+leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+  
+  # add base maps
+  addProviderTiles("Esri.WorldImagery",
+                   # give the layer a name
+                   group = "World") %>%
+  # set zoom and position
+  setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
+  addMarkers(data = my.start.end() %>% 
+               st_transform(crs = 4326)) %>%
+  addCircleMarkers(data = origin.points() %>% 
+               st_transform(crs = 4326),
+               color = "yellow") %>%
+  addCircleMarkers(data = destination.points() %>% 
+               st_transform(crs = 4326),
+               color = "yellow") %>%
+  addPolygons(data = final.catchments() %>% 
+                st_transform(crs = 4326),
+              fillOpacity = 0.001,
+              color = "red",
+              weight = 3) %>%
+    addPolylines(data = masked.rec.species() %>% 
+                   st_transform(crs = 4326),
+              fillOpacity = 0.001,
+              color = "white",
+              weight = 3)
+  
+})
+
+leafletOutput('interim', height=1000)
+```
+
+
+
 Data
 =====================================
 
@@ -505,4 +810,11 @@ renderPrint({all_nodes()})
 ### Step 8: Get coordinates of all nodes in the network
 ```{r}
 renderPrint({all_coords()})
+```
+
+
+### Step 8: Get coordinates of all nodes in the network
+
+```{r}
+renderPrint({my.start.end()})
 ```
