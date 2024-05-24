@@ -50,6 +50,7 @@ library(tidygraph)
 library(sfnetworks)
 library(igraph)
 library(scales)
+library(ggspatial)
 ```
 
 
@@ -58,7 +59,7 @@ library(scales)
 Sampling
 =====================================
 
-Column {.sidebar}
+Column {.sidebar data-width=250}
 -------------------------------------
 
 **Upload species locations**
@@ -300,8 +301,11 @@ Selection with barriers
 =====================================
 
 
-Column {.sidebar}
+Column {.sidebar data-width=250}
 -------------------------------------
+
+The fish barriers in the river catchment will appear to your right.
+
 
 ```{r}
 # filter by my catchments
@@ -613,12 +617,152 @@ destination.points <- reactive({
 
 ```
 
-Path (raw)
+
+Barriers within buffer
 =====================================
 
-Column {.sidebar}
+
+Column {.sidebar data-width=250}
 -------------------------------------
 
+Note: the REC river system is rather coarse and will often be misaligned with the actual river pass. Consequently, fish passage barriers should be buffered to allow inclusion
+
+<br/>
+
+```{r}
+sliderInput("my.buffer", "Select buffer (m)",
+             min = 0, max = 100, value = 50, ticks = 10)
+```
+
+
+
+
+Column 
+-------------------------------------
+
+```{r}
+
+
+output$my.buffer  <- renderLeaflet({
+ 
+  buffered <- st_transform(middle(), crs = 2193)
+  buffered <- st_buffer(buffered, input$my.buffer) %>%
+    st_transform(crs = 4326)
+  
+  barrier.buff <- st_intersection(barriers() %>%
+                                    st_transform(crs = 4326),
+                                  buffered)
+  
+  col.structure <- colorFactor(palette = c("red", "green", "blue", 
+                                         "skyblue", "white", "yellow",
+                                         "grey", "pink", "orange",
+                                         "purple", "chartreuse"),
+            levels = unique(barriers()$structure))
+  
+  
+  
+  
+  leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+    
+    # add base maps
+    addProviderTiles("Esri.WorldImagery",
+                     # give the layer a name
+                     group = "World") %>%
+    # set zoom and position
+    setView(lng = 169,
+            lat = -45.9,
+            zoom = 8) %>%
+    addMarkers(data = my.start.end() %>%
+                 st_transform(crs = 4326)) %>%
+    addPolylines(
+      data = middle() %>%
+        st_transform(crs = 4326),
+      fillOpacity = 0.001,
+      color = "yellow",
+      weight = 3
+    ) %>%
+    addPolylines(
+      data = buffered %>%
+        st_transform(crs = 4326),
+      fillOpacity = 0.001,
+      color = "red",
+      weight = 3
+    ) %>%
+    addCircleMarkers(
+      data = barrier.buff ,
+      color = ~ col.structure(structure),
+      fillOpacity = 1,
+      radius = 4,
+      popup = paste(
+        "Structure: ",
+        barrier.buff$structure,
+        "<br>",
+        "Passage risk:",
+        barrier.buff$`risk to passage`,
+        "<br>",
+        "Assest id:",
+        barrier.buff$`asset id`,
+        "<br>",
+        "Owner:",
+        barrier.buff$`owner`,
+        "<br>",
+        "Stream name:",
+        barrier.buff$`stream name`,
+        "<br>",
+        "Priority:",
+        barrier.buff$`priority`
+      )
+    ) %>%
+    addLegend(
+      data = barriers(),
+      position = "bottomright",
+      pal = col.structure ,
+      values = barriers()$structure,
+      title = "Barrier type",
+      na.label = ""
+    ) %>%
+    addMeasure(
+      position = "bottomleft",
+      primaryLengthUnit = "kilometers",
+      primaryAreaUnit = "ha",
+      activeColor = "lightyellow",
+      completedColor = "orange"
+    )
+  
+})
+
+leafletOutput('my.buffer', height =900)
+
+```
+
+Static map
+=====================================
+
+Column {.sidebar data-width=250}
+-------------------------------------
+
+The path between your selected points and the fish barriers which fall within the buffer will appear on your right.
+
+The map is downloadable below:
+
+<br/>
+
+```{r}
+uiOutput("download_graph_UI")
+
+output$download_graph_UI <- renderUI({
+  downloadButton("down_graph_Btn", "Download graph", style = "width:100%;")
+})
+
+output$down_graph_Btn <- downloadHandler(
+  filename = "Name this reach map.png",
+    content = function(file) {
+      png(file=file, width = 900, height = 600)
+      plot(my.map())
+      dev.off()
+  }
+)
+```
 
 
 Column 
@@ -782,128 +926,74 @@ middle <- reactive({
 
 ```
 
-```{r}
 
-renderPlot({
-  ggplot() +
-    theme_void()+
-    geom_sf(data = graph() %>% activate(edges) %>% as_tibble() %>% st_as_sf(),
-  colour = "darkgrey") +
-    geom_sf(data = origin.points(), colour = "red", size =5) +
-    geom_sf(data = destination.points(), colour = "red", size = 5)+
-    geom_sf(data = middle(), colour = "firebrick", lwd =1)+
-    ggtitle(paste0("Reach length = ", comma(st_length(middle()) %>% round(0) %>% as.numeric()), " m"))+
-    theme(plot.title = element_text(size =30))
-} , height =900)
-```
-
-
-Barriers within buffer
-=====================================
-
-
-Column {.sidebar}
--------------------------------------
-
-
-
-Column 
--------------------------------------
 
 ```{r}
 
 
-output$my.buffer  <- renderLeaflet({
-  col.structure <- colorFactor(
-    palette = c(
-      "red",
-      "green",
-      "blue",
-      "skyblue",
-      "white",
-      "yellow",
-      "grey",
-      "pink",
-      "orange",
-      "purple",
-      "chartreuse"
-    ),
-    levels = unique(barriers()$structure)
-  )
-  
-  buffered <- st_transform(middle(), crs = 2391)
-  buffered <- st_buffer(buffered, 20) %>%
+my.map <- reactive({
+  buffered <- st_transform(middle(), crs = 2193)
+  buffered <- st_buffer(buffered, input$my.buffer) %>%
     st_transform(crs = 4326)
   
   barrier.buff <- st_intersection(barriers() %>%
                                     st_transform(crs = 4326),
                                   buffered)
   
-  leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
-    
-    # add base maps
-    addProviderTiles("Esri.WorldImagery",
-                     # give the layer a name
-                     group = "World") %>%
-    # set zoom and position
-    setView(lng = 169,
-            lat = -45.9,
-            zoom = 8) %>%
-    addMarkers(data = my.start.end() %>%
-                 st_transform(crs = 4326)) %>%
-    addPolylines(
-      data = middle() %>%
-        st_transform(crs = 4326),
-      fillOpacity = 0.001,
-      color = "yellow",
-      weight = 3
-    ) %>%
-    addCircleMarkers(
-      data = barrier.buff ,
-      color = ~ col.structure(structure),
-      fillOpacity = 1,
-      radius = 4,
-      popup = paste(
-        "Structure: ",
-        barriers()$structure,
-        "<br>",
-        "Passage risk:",
-        barriers()$`risk to passage`,
-        "<br>",
-        "Assest id:",
-        barriers()$`asset id`,
-        "<br>",
-        "Owner:",
-        barriers()$`owner`,
-        "<br>",
-        "Stream name:",
-        barriers()$`stream name`,
-        "<br>",
-        "Priority:",
-        barriers()$`priority`
-      )
-    ) %>%
-    addLegend(
-      data = barriers() ,
-      position = "bottomright",
-      pal = col.structure ,
-      values = barriers()$structure,
-      title = "Barrier type",
-      na.label = ""
-    ) %>%
-    addMeasure(
-      position = "bottomleft",
-      primaryLengthUnit = "kilometers",
-      primaryAreaUnit = "ha",
-      activeColor = "lightyellow",
-      completedColor = "orange"
-    )
+  ggplot() +
+    theme_void() +
+    geom_sf(
+      data = graph() %>% activate(edges) %>% as_tibble() %>% st_as_sf(),
+      colour = "darkgrey"
+    ) +
+    # geom_sf(data = origin.points(), colour = "black",  size = 7, shape = 15) +
+    #  geom_sf(data = destination.points(), colour = "black", size = 7, shape = 15)+
+    geom_sf(data = middle(),
+            colour = "firebrick",
+            lwd = 1) +
+    ggtitle(paste0(
+      "Catchment = ", input$my.catchments,
+      "\nReach length = ",
+      comma(st_length(middle()) %>%
+              round(0) %>%
+              as.numeric()),
+      " m"
+    )) +
+    theme(plot.title = element_text(size = 22)) +
+    theme(legend.title = element_text(size = 22)) +
+    theme(legend.text = element_text(size = 18)) +
+    labs(fill = paste("Structure type @", input$my.buffer, "m buffer")) +
+    geom_sf(
+      data = barrier.buff,
+      aes(fill = structure),
+      shape = 21,
+      size = 5
+    ) +
+    annotation_scale(location = "br", text_cex = 1.2)
   
 })
-
-leafletOutput('my.buffer', height =900)
-
+  
+renderPlot({
+    my.map()
+  } , height = 900)
 ```
+
+Video help
+=====================================
+
+Column {.sidebar data-width=250}
+-------------------------------------
+
+To the right is a helper video describing how to use the dashboard.
+
+
+Column 
+-------------------------------------
+
+
+### Introduction
+
+<div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/b31261e50a3041188294ff5d9dfbfa5e?sid=9bf46659-4deb-4fac-95ec-bd7832b27bce" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 75%; height: 75%;"></iframe></div>
 
 
 
@@ -957,5 +1047,22 @@ renderPrint({all_coords()})
 ### Step 8: Get coordinates of all nodes in the network
 
 ```{r}
-renderPrint({my.start.end()})
+renderPrint({
+  
+   buffered <- st_transform(middle(), crs = 2193)
+  buffered <- st_buffer(buffered, input$my.buffer) %>%
+    st_transform(crs = 4326)
+  
+  barrier.buff <- st_intersection(barriers() %>%
+                                    st_transform(crs = 4326),
+                                  buffered)
+  
+
+      col.structure <- colorFactor(palette = c("red", "green", "blue", 
+                                         "skyblue", "white", "yellow",
+                                         "grey", "pink", "orange",
+                                         "purple", "chartreuse"),
+            levels = unique(barriers()$structure))
+  
+  })
 ```
