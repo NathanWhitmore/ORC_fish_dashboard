@@ -54,6 +54,33 @@ library(ggspatial)
 ```
 
 
+```{r}
+# read spatial data
+
+# regional boundaries
+boundaries <- st_read("Regional boundaries\\regional-council-2022-generalised.shp", quiet = TRUE) %>%
+  st_transform(2193)
+
+# otago boundaries
+otago <- boundaries %>% filter(boundaries$REGC2022_1 == "Otago Region") %>%
+  st_transform(2193)
+
+# catchments
+catchments <- st_read("ORC_Catchments\\ORC_Catchments.shp", quiet = TRUE) 
+
+# reads in REC files (gbd format)
+rec <- st_read("C:\\Users\\Nathan\\Downloads\\REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
+  st_transform(2193)
+
+# reads in non-migratory data
+non.mig <-  st_read(
+  "Your Non-Migratory Freshwater Fish Distribution/Non_migratory_Freshwater_Fish_Distribution.shp",
+  quiet = TRUE
+) %>%
+  st_transform(2193)
+
+```
+
 
 
 Sampling
@@ -92,7 +119,6 @@ my.fish <- eventReactive(input$file1,{
 Please narrow your search to only the catchments required (this minimises unnecessary computation).
 
 ```{r}
-
 
 renderUI({  
 selectInput("my.catchments", label = "Catchments", 
@@ -143,32 +169,43 @@ my.start.end <- eventReactive(input$submit,{
 })
 ```
 
+
+<br/>
+<br/>
 ```{r}
-# read spatial data
-
-# regional boundaries
-boundaries <- st_read("Regional boundaries\\regional-council-2022-generalised.shp", quiet = TRUE) %>%
-  st_transform(2193)
-
-# otago boundaries
-otago <- boundaries %>% filter(boundaries$REGC2022_1 == "Otago Region") %>%
-  st_transform(2193)
-
-# catchments
-catchments <- st_read("ORC_Catchments\\ORC_Catchments.shp", quiet = TRUE) 
-
-# reads in REC files (gbd format)
-rec <- st_read("C:\\Users\\Nathan\\Downloads\\REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
-  st_transform(2193)
-
-# reads in non-migratory data
-non.mig <-  st_read(
-  "Your Non-Migratory Freshwater Fish Distribution/Non_migratory_Freshwater_Fish_Distribution.shp",
-  quiet = TRUE
-) %>%
-  st_transform(2193)
-
+# inclusion of non-mig data
+radioButtons(
+  "fishdata",
+  label = HTML("<b>Include non-migratory fish data</b>"),
+  choices = c("No", "Yes"),
+  selected = "Yes"
+)
 ```
+
+<br/>
+
+```{r}
+renderUI({
+  conditionalPanel(
+    condition = "input.fishdata == 'Yes'",
+    
+   selectInput("species.sel", 
+               label = HTML("<b>Comparison species</b>"),
+               choices = sort(unique(non.mig$Species)),
+               selected = "Galaxias depressiceps")
+  )
+})
+```
+
+```{r}
+non.mig.known <- reactive({
+  non.mig.known <- non.mig %>% filter(Species == input$species.sel)
+  
+  non.mig.known
+  
+})
+```
+
 
 ```{r}
 # filter non-migratory data
@@ -258,6 +295,9 @@ Column
 
 output$mymap  <- renderLeaflet({
   leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+    setView(lng = 169,
+          lat = -45.9,
+          zoom = 8) %>%
     
     # add base maps
     addProviderTiles("Esri.WorldImagery",
@@ -285,102 +325,15 @@ output$mymap  <- renderLeaflet({
       primaryAreaUnit = "ha",
       activeColor = "lightyellow",
       completedColor = "orange"
-    )
+    ) %>%
+      addPolylines(data = non.mig.known() %>% st_transform(crs = 4326), 
+               color = "yellow", 
+               weight = 3)
+
   
 })
 
 leafletOutput('mymap', height =900)
-
-```
-
-Non-migratory inclusion
-=====================================
-
-
-Column {.sidebar data-width=250}
--------------------------------------
-```{r}
-
-radioButtons(
-  "fishdata",
-  label = "Include non-migratory fish data",
-  choices = c("no", "yes"),
-  selected = "no"
-)
-
-non.mig <- reactive({
-
-if(input$fishdata == "yes"){
-  
-   non.mig <- st_read(
-  "Your Non-Migratory Freshwater Fish Distribution/Non_migratory_Freshwater_Fish_Distribution.shp",
-  quiet = TRUE
-) %>% st_transform(crs = 4326)
-  
-  non.mig
-  
-}
-  
-})
-
-renderUI({
-  conditionalPanel(
-    condition = "input.non.mig == 'yes'",
-    
-   selectInput("species.sel", 
-               label = HTML("<b>Comparison species</b>"),
-                               choices = sort(unique(non.mig()$Species))
-)
-  )
-})
-```
-
-
-```{r}
-known <- reactive({
-  known <- non.mig() %>% filter(Species == input$species.sel)
-  
-  known
-  
-})
-```
-
-Column
--------------------------------------
-
-```{r}
-
-renderPlot({
-  
-
-  
-  ggplot()+
-    geom_sf(data = known())
-
-
-})
-
-
-```
-
-Column
--------------------------------------
-
-```{r}
-
-renderLeaflet({
-  
-leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
-  
-  # add base maps
-  addProviderTiles("Esri.WorldImagery",
-                   # give the layer a name
-                   group = "World") %>%
-  addPolylines(data = known(), 
-               color = "yellow", 
-               weight = 3)
-
-})
 
 ```
 
