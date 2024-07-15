@@ -119,7 +119,7 @@ icon.star <- makeAwesomeIcon(icon = 'star', markerColor = 'green', library='ion'
     }
     
     leafletProxy('map')%>%
-      clearMarkers() %>%
+      clearMarkers(addAwesomeMarkers) %>%
       addAwesomeMarkers(lng = rv$markers$long, lat = rv$markers$lat, icon = icon.star)
   })
     
