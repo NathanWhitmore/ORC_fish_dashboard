@@ -1,5 +1,5 @@
 ---
-title: "ORC fish dashboard"
+title: "Fish passage"
 runtime: shiny
 output:
   flexdashboard::flex_dashboard:
@@ -182,15 +182,33 @@ renderUI({
   
  my.dates <- ymd(my.fish()$Collection.date)
   
- dateRangeInput('dateRange',
-      label = HTML("<b>Date range of collection dates </b>"),
+ dateRangeInput('date.range',
+      label = HTML("Date range of collection dates"),
       start = min(my.dates), end = max(my.dates)
     )
   
 })
 ```
 
+
+```{r}
+# filter fish data based on date
+
+my.fish.filtered <- reactive({
+  
+  fish.filter <- my.fish() %>% 
+    filter(Collection.date >= input$date.range[1] & 
+             Collection.date <= input$date.range[2])
+  
+  fish.filter
+  
+  
+})
+```
+
 <br/>
+
+
 
 **Step 5: Choose Start-Finish**
 
@@ -725,13 +743,13 @@ renderPrint({
 uiOutput("download_barrier_UI")
 
 output$download_barrier_UI <- renderUI({
-  downloadButton("down_barrier_Btn", "Download graph", style = "width:100%;")
+  downloadButton("down_barrier_Btn", "Download detailed barrier info", style = "width:100%;")
 })
 
 output$down_barrier_Btn <- downloadHandler(
   filename = "Name this barrier file.csv",
      content = function(file){
-      write.csv(barrier.table(), file)
+      write.csv(barrier.table(), file, row.names = FALSE)
     }
 )
 ```
@@ -1097,10 +1115,18 @@ barrier.table <- reactive({
                                   buffered)
   
   barrier.table <- barrier.buff 
+  
+  # strip coordinates
+  barrier.coord <- st_coordinates(barrier.table)
+  barrier.coord <- barrier.coord %>% 
+    as.data.frame() %>%
+    rename(Longitude = X, Latitude = Y)
   st_geometry(barrier.table) <- NULL
   
-  barrier.table
+  # add coordinates
   
+  barrier.table <- cbind(barrier.table, barrier.coord)
+  barrier.table
   
   
 })
@@ -1129,5 +1155,217 @@ Column
 
 <div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/b31261e50a3041188294ff5d9dfbfa5e?sid=9bf46659-4deb-4fac-95ec-bd7832b27bce" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 75%; height: 75%;"></iframe></div>
 
+
+Data check
+=====================================
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+
+### Step 1: make edges
+```{r}
+renderPrint({edges()})
+```
+
+### Step 2: make nodes from edges
+```{r}
+renderPrint({nodes()})
+```
+
+### Step 3: Give each node a unique index
+```{r}
+renderPrint({ nodes.index()})
+```
+
+### Step 4: Combine the node indices with the edges
+```{r}
+renderPrint({edges2()})
+```
+
+### Step 5: Remove duplicate nodes
+```{r}
+renderPrint({nodes2()})
+```
+
+### Step 6: Get all nodes in the network
+```{r}
+renderPrint({graph()})
+```
+
+### Step 7: Get all nodes in the network
+```{r}
+renderPrint({all_nodes()})
+```
+
+### Step 8: Get coordinates of all nodes in the network
+```{r}
+renderPrint({all_coords()})
+```
+
+
+### Step 9: problem inter-node
+
+```{r}
+renderPrint({
+  
+nearest_edge_origin <-
+    st_nearest_feature(origin.points(), edges2())
+  nearest_edge_destination <-
+    st_nearest_feature(destination.points(), edges2())
+  
+  # find nodes corresponding to edges
+  my.origin <-
+    nodes.index() %>% filter(edgeID == nearest_edge_origin)
+  origin.node <- my.origin$nodeID[1:2]
+  origin.node
+  
+  my.destination <-
+    nodes.index() %>% filter(edgeID == nearest_edge_destination)
+  destination.node <- my.destination$nodeID[1:2]
+  destination.node
+  
+  # find shortest path
+  node_o <- all_nodes()[origin.node,]
+  node_d <- all_nodes()[destination.node,]
+  
+  # calculate paths (there are 4 variants)
+  path1 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[1] ,
+    # new origin
+    to = destination.node[1],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph1 <- graph() %>%
+    subgraph.edges(eids = path1$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  path2 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[2] ,
+    # new origin
+    to = destination.node[2],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph2 <- graph() %>%
+    subgraph.edges(eids = path2$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  path3 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[1] ,
+    # new origin
+    to = destination.node[2],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph3 <- graph() %>%
+    subgraph.edges(eids = path3$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  path4 <- shortest_paths(
+    graph = graph(),
+    from = origin.node[2] ,
+    # new origin
+    to = destination.node[1],
+    # new destination
+    output = 'both',
+    weights = graph() %>% activate(edges) %>% pull(length)
+  )
+  
+  path_graph4 <- graph() %>%
+    subgraph.edges(eids = path4$epath %>% unlist()) %>%
+    as_tbl_graph()
+  
+  ### making the multilines singular
+  my.path1 <-
+    path_graph1 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  my.path2 <-
+    path_graph2 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  my.path3 <-
+    path_graph3 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  my.path4 <-
+    path_graph4 %>% activate(edges) %>% as_tibble() %>% st_as_sf()
+  
+
+    my.path <- rbind(my.path1, my.path2, my.path3, my.path4)
+    
+    # issue starts below
+    
+    
+    
+       # note the bit before is different in 4.2.1
+    my.path <- my.path  %>%
+      summarize(geometry = st_union(st_geometry(my.path))) %>%
+      st_line_merge()
+    
+    merged.line <- my.path  %>%
+      summarize(geometry = st_combine(st_geometry(my.path))) %>%
+      st_line_merge()
+    
+    
+    ### the blade
+    # cutting the line
+    # make the blade for cutting
+    blade <- rbind(origin.points(),
+                   destination.points())  %>% st_as_sf()
+    
+    
+    # snapping
+    # turn reach into 10 m lengths
+    ten.m.lengths <- round(as.numeric(st_length(merged.line)) / 10  , 0)
+    merged.line.points <-
+      st_sample(merged.line, size = ten.m.lengths, type = "regular") %>% st_as_sf()
+    
+    # find the nearest nodes which relate to the blade (observations)
+    nrst <- st_nearest_points(blade, merged.line.points) %>%
+      st_cast("POINT") %>% st_as_sf()
+    
+    # keep only the end nodes
+    p_snapped <- nrst[seq(from = 2,
+                          to = nrow(nrst),
+                          by = 2), ]
+    
+    # merge the lines to produce an emulation of the reach
+    merged.lines <- merged.line.points %>% st_cast("LINESTRING")
+    
+    # split the emulation by the blade
+    parts <-
+      st_collection_extract(st_split(merged.lines$x, p_snapped$x), "LINESTRING") %>%
+      st_as_sf()
+    
+    parts
+  
+  })
+```
+
+### Step 10: date output
+
+```{r}
+renderPrint({
+  
+input$date.range
+  
+})
+```
+
+
+### Step 11: date setup
+
+```{r}
+renderPrint({
+  
+  my.fish.filtered()
+  
+})
+```
 
 
