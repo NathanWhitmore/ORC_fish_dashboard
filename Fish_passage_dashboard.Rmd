@@ -62,12 +62,12 @@ handle_error <- function(e) {
     stop("Your points are not on an interconnecting river network")
   } else if (inherits(e, "simpleError") && grepl("undefined columns selected", e$message)) {
     stop("No points selected")
-  } else if (inherits(e, "simpleError") && grepl("\\[ object Object\\]", e$message)) {
-    stop("No points nor catchment selected")
   } else {
-    stop(e) # Re-throw other errors
+    stop("Missing data layer - please ensure steps are followed & data layers are in the required folders)")
   }
+  
 }
+
 
 
 ```
@@ -1196,12 +1196,16 @@ Column {.sidebar data-width=350}
 To the right is a helper video describing how to use the dashboard.
 
 
+**Acknowledgements**
+
+The code for this dashboard was written by Nathan Whitmore is freely available for reuse and modification via an [MIT license](https://choosealicense.com/licenses/mit/). The source code can be found under the under the '</> Source Code' tab or via [GitHub](https://github.com/NathanWhitmore/sundial).  Dashboard creation was funded by the Otago Regional Council. Special thanks go to Scott Jarvie for instigating this project.
+
 Column 
 -------------------------------------
 
 
 ### Introduction
 
-<div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/32b5e59c0a40409d99397681a524c023?sid=8835e1b1-f44f-4dc6-a154-94697a22c9f5" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
+<div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/32b5e59c0a40409d99397681a524c023?sid=424b3c03-f0e3-4a1a-9bab-f39c317fb64d" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 80%; height: 80%;"></iframe></div>
 
 
