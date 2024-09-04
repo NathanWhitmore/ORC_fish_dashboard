@@ -1194,8 +1194,17 @@ Video help
 Column {.sidebar data-width=350}
 -------------------------------------
 
-To the right is a helper video describing how to use the dashboard.
+**Help video**
 
+To render the video please click the thumbnails to the right. Alternatively, please click the links below (if your set up prevents rendering):
+
+* [Introduction](https://www.loom.com/share/32b5e59c0a40409d99397681a524c023?sid=4490d0fd-66d4-40d9-acd8-fa27001400fd) for direct access.
+
+* [Errors & trouble shooting](https://www.loom.com/embed/379dbe2f71df4b56bbe2129d7d2ca807?sid=2d077255-3175-4ff8-a275-67185a4144fa) for direct access.
+
+* [(Extra) Nearest neighbouring route](https://www.loom.com/share/6161e42c28c3469cbf3e0e78ab4d1965?sid=c20c4c10-6a5c-483f-bf5c-78e50548edd9) for direct access.
+
+<br/>
 
 **Acknowledgements**
 
@@ -1206,12 +1215,15 @@ Row {.tabset .tabset-fade}
 
 
 ### Introduction
+
 <div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/32b5e59c0a40409d99397681a524c023?sid=424b3c03-f0e3-4a1a-9bab-f39c317fb64d" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 80%; height: 80%;"></iframe></div>
 
 
 ### Errors & trouble shooting
+
 <div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/379dbe2f71df4b56bbe2129d7d2ca807?sid=8ff364de-8e0f-4dbc-8ffc-194d71013f08" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 80%; height: 80%;"></iframe></div>
 
 ### (Extra) Nearest neighbouring route
-<div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/6161e42c28c3469cbf3e0e78ab4d1965?sid=b01ea40e-44a3-4d18-a248-915b4ac6833f" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 80%; height: 80%;"></iframe></div>
+
+<div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/6161e42c28c3469cbf3e0e78ab4d1965?sid=98bc8913-ccba-422c-83c8-0db065b9e96c" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
 
