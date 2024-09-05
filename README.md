@@ -1,7 +1,7 @@
 # ORC fish dashboard
 
 ## Purpose 
-The purpose of this R dashboard is to allow users to identify potential barriers for freshwater fish movement and migration.
+The purpose of this R dashboard is to allow users to identify potential barriers for freshwater fish movement and migration as well as calculating distance between points on river networks
 
 ## Folder structure and data requirements
 Because of the large size of the data it has not been uploaded to GitHub. If you are downloading this R project you will have to manually create and populate 6 additional folders within the project folder named (exact capitalisation required):
@@ -13,7 +13,7 @@ Because of the large size of the data it has not been uploaded to GitHub. If you
 * Your Non-Migratory Freshwater Fish Distribution (containing one set of SHP files labelled "Non_migratory_Freshwater_Fish_Distribution.shp" etc.). Downloadable from the New Zealand Freshwater Fish Database
   
 ## Support
-Dashboard development was funded by Otago Regional Council and ahs been developed for their needs.
+Dashboard development was funded by Otago Regional Council and has been developed specifically for their needs.
 
 ## Licensing 
 This code has been licensed under and MIT license.
