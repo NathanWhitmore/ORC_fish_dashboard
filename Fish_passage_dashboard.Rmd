@@ -86,10 +86,10 @@ otago <- boundaries %>% filter(boundaries$REGC2022_1 == "Otago Region") %>%
   st_transform(2193)
 
 # catchments
-catchments <- st_read("ORC_Catchments\\ORC_Catchments.shp", quiet = TRUE) 
+catchments <- st_read("Catchments\\Catchments.shp", quiet = TRUE) 
 
 # reads in REC files (gbd format)
-rec <- st_read("C:\\Users\\Nathan\\Downloads\\REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
+rec <- st_read("REC2_geodata_version_5\\nzRec2_v5.gdb", quiet = TRUE)%>%
   st_transform(2193)
 
 # reads in non-migratory data
